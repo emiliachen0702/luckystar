@@ -48,8 +48,8 @@
     let lastX, lastY, lastZ;
 
     // --- 核心參數優化 ---
-    const SHAKE_THRESHOLD = 120; // 提升靈敏度門檻，徹底防誤觸
-    const TOTAL_SHAKES_NEEDED = 8; 
+    const SHAKE_THRESHOLD = 400; // 提升靈敏度門檻，徹底防誤觸
+    const TOTAL_SHAKES_NEEDED = 10; 
 
     // --- 零延遲方案：改用合成音效 (小鈴鐺聲) ---
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -157,3 +157,4 @@
 </script>
 </body>
 </html>
+

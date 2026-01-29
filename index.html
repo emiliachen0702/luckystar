@@ -47,8 +47,8 @@
     let lastUpdate = 0;
     let lastX, lastY, lastZ;
 
-    const SHAKE_THRESHOLD = 80; 
-    const TOTAL_SHAKES_NEEDED = 8; 
+    const SHAKE_THRESHOLD = 120; 
+    const TOTAL_SHAKES_NEEDED = 10; 
 
     const WIN_SOUND_URL = 'https://docs.google.com/uc?export=download&id=1dZEvpLULFeG_M762MMnlZKL8CownQHvs'; 
     const winAudio = new Audio(WIN_SOUND_URL);
@@ -81,3 +81,4 @@
     function handleMotion(e) {
         let curTime = Date.now();
         if ((
+

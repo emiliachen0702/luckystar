@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業抽籤系統 - 震動強化版</title>
+    <title>專業抽籤系統 - 零延遲版</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --danger: #dc2626; }
@@ -31,7 +31,7 @@
     </div>
     
     <div id="drawZone">
-        <div class="shake-hint">請「用力」連續搖晃手機！</div>
+        <div class="shake-hint">用力搖晃！進度條滿即抽籤</div>
         <div class="progress-bar"><div id="progress"></div></div>
         <div id="shakeStage" style="font-size: 0.85rem; color: #64748b; font-weight: bold;">能量：0 / 8</div>
         <div id="result">等待發力</div>
@@ -47,18 +47,41 @@
     let lastUpdate = 0;
     let lastX, lastY, lastZ;
 
-    const SHAKE_THRESHOLD = 120; 
-    const TOTAL_SHAKES_NEEDED = 10; 
+    // --- 核心參數優化 ---
+    const SHAKE_THRESHOLD = 120; // 提升靈敏度門檻，徹底防誤觸
+    const TOTAL_SHAKES_NEEDED = 8; 
 
-    const WIN_SOUND_URL = 'https://docs.google.com/uc?export=download&id=1dZEvpLULFeG_M762MMnlZKL8CownQHvs'; 
-    const winAudio = new Audio(WIN_SOUND_URL);
+    // --- 零延遲方案：改用合成音效 (小鈴鐺聲) ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playWinnerSound() {
+        const now = audioCtx.currentTime;
+        // 建立雙振盪器模擬清脆鈴聲
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc1.type = 'sine'; osc2.type = 'sine';
+        osc1.frequency.setValueAtTime(1174.66, now); // D6
+        osc2.frequency.setValueAtTime(2349.32, now); // D7
+
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.5, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+
+        osc1.connect(gain); osc2.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc1.start(); osc2.start();
+        osc1.stop(now + 1); osc2.stop(now + 1);
+    }
 
     async function initSystem() {
         const input = document.getElementById('nameInput').value;
         names = input.split('\n').map(n => n.trim()).filter(n => n !== "");
         if (names.length === 0) return alert("請輸入名單");
 
-        winAudio.load();
+        // 啟動 AudioContext (手機必備)
+        if (audioCtx.state === 'suspended') audioCtx.resume();
 
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
             try {
@@ -66,7 +89,7 @@
                 if (p === 'granted') {
                     window.addEventListener('devicemotion', handleMotion);
                 } else {
-                    alert("權限遭拒");
+                    alert("請允許感應器權限");
                 }
             } catch (err) { console.error(err); }
         } else {
@@ -80,5 +103,57 @@
 
     function handleMotion(e) {
         let curTime = Date.now();
-        if ((
+        if ((curTime - lastUpdate) > 70) { 
+            let acc = e.accelerationIncludingGravity;
+            if (!acc) return;
+            
+            let speed = Math.abs(acc.x + acc.y + acc.z - lastX - lastY - lastZ) / (curTime - lastUpdate) * 10000;
+            
+            if (speed > SHAKE_THRESHOLD) {
+                shakeCount++;
+                if (navigator.vibrate) navigator.vibrate(15); // 每下搖晃都有震動回饋
 
+                const progressPercent = (shakeCount / TOTAL_SHAKES_NEEDED) * 100;
+                document.getElementById('progress').style.width = progressPercent + '%';
+                document.getElementById('shakeStage').innerText = `能量：${shakeCount} / ${TOTAL_SHAKES_NEEDED}`;
+                
+                if (shakeCount >= TOTAL_SHAKES_NEEDED) {
+                    drawWinner();
+                    shakeCount = 0;
+                    setTimeout(() => { document.getElementById('progress').style.width = '0%'; }, 400);
+                }
+            }
+            lastUpdate = curTime;
+            lastX = acc.x; lastY = acc.y; lastZ = acc.z;
+        }
+    }
+
+    function drawWinner() {
+        if (names.length === 0) {
+            document.getElementById('result').innerText = "已全數抽完";
+            return;
+        }
+
+        const idx = Math.floor(Math.random() * names.length);
+        const winner = names.splice(idx, 1)[0];
+        history.push(winner);
+
+        // --- 零延遲播放 ---
+        playWinnerSound();
+
+        // 震動與特效
+        if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
+        confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 }, zIndex: 1000 });
+
+        document.getElementById('result').innerText = winner;
+        document.getElementById('shakeStage').innerText = "能量已滿！請再次發力";
+        updateUI();
+    }
+
+    function updateUI() {
+        document.getElementById('remCount').innerText = names.length;
+        document.getElementById('historyList').innerHTML = history.slice().reverse().map(h => `<span class="tag">${h}</span>`).join('');
+    }
+</script>
+</body>
+</html>

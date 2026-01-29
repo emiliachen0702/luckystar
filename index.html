@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>專業抽籤系統 - 雲端音效版</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 500px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        h2 { font-size: 1.2rem; color: #1e293b; margin-top: 0; }
+        textarea { width: 100%; height: 120px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; font-size: 16px; margin-bottom: 15px; box-sizing: border-box; }
+        .btn-primary { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; background: var(--primary); color: white; cursor: pointer; }
+        #drawZone { display: none; text-align: center; margin-top: 20px; }
+        #result { font-size: 3.5rem; font-weight: 800; margin: 30px 0; color: #1e293b; min-height: 5rem; display: flex; align-items: center; justify-content: center; }
+        .shake-hint { background: #eff6ff; color: var(--primary); padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; display: inline-block; margin-bottom: 10px; }
+        .history { border-top: 1px dashed #e2e8f0; padding-top: 20px; text-align: left; margin-top: 20px; }
+        .tag { display: inline-block; background: #f1f5f9; padding: 5px 12px; border-radius: 6px; margin: 4px; font-size: 0.85rem; border: 1px solid #e2e8f0; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="setupZone">
+        <h2>1. 導入名單</h2>
+        <textarea id="nameInput" placeholder="請貼上姓名清單（一行一個名字）"></textarea>
+        <button class="btn btn-primary" onclick="initSystem()">啟動抽籤模式</button>
+    </div>
+    
+    <div id="drawZone">
+        <div id="shakeStage" class="shake-hint">等待搖晃偵測...</div>
+        <div id="result">準備抽獎</div>
+        <div style="color:#64748b; font-size: 0.9rem;">剩餘人數：<span id="remCount">0</span></div>
+        <div class="history"><strong>已抽出紀錄：</strong><div id="historyList"></div></div>
+    </div>
+</div>
+
+<script>
+    let names = [];
+    let history = [];
+    let shakeCount = 0;
+    let lastUpdate = 0;
+    let lastX, lastY, lastZ;
+
+    // --- 音效設定：使用您提供的 Google Drive 直連網址 ---
+    const WIN_SOUND_URL = 'https://docs.google.com/uc?export=download&id=1dZEvpLULFeG_M762MMnlZKL8CownQHvs'; 
+    const winAudio = new Audio(WIN_SOUND_URL);
+
+    async function initSystem() {
+        const input = document.getElementById('nameInput').value;
+        names = input.split('\n').map(n => n.trim()).filter(n => n !== "");
+        if (names.length === 0) return alert("請輸入名單");
+
+        // 預載音效
+        winAudio.load();
+
+        // 請求動作感應器權限 (iOS 必備)
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+            try {
+                const p = await DeviceMotionEvent.requestPermission();
+                if (p === 'granted') {
+                    window.addEventListener('devicemotion', handleMotion);
+                } else {
+                    alert("未取得感應器權限，將無法使用搖晃抽籤");
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        } else {
+            window.addEventListener('devicemotion', handleMotion);
+        }
+        
+        document.getElementById('setupZone').style.display = 'none';
+        document.getElementById('drawZone').style.display = 'block';
+        updateUI();
+    }
+
+    function handleMotion(e) {
+        let curTime = Date.now();
+        if ((curTime - lastUpdate) > 100) {
+            let acc = e.accelerationIncludingGravity;
+            if (!acc) return;
+            
+            let speed = Math.abs(acc.x + acc.y + acc.z - lastX - lastY - lastZ) / (curTime - lastUpdate) * 10000;
+            
+            if (speed > 25) { // 搖晃強度門檻
+                shakeCount++;
+                document.getElementById('shakeStage').innerText = `偵測搖晃：${shakeCount} / 3`;
+                
+                if (shakeCount >= 3) {
+                    drawWinner();
+                    shakeCount = 0;
+                }
+            }
+            lastUpdate = curTime;
+            lastX = acc.x; lastY = acc.y; lastZ = acc.z;
+        }
+    }
+
+    function drawWinner() {
+        if (names.length === 0) {
+            document.getElementById('result').innerText = "抽完囉";
+            document.getElementById('shakeStage').innerText = "名單已空";
+            return;
+        }
+
+        const idx = Math.floor(Math.random() * names.length);
+        const winner = names.splice(idx, 1)[0];
+        history.push(winner);
+
+        // 1. 播放您指定的 Google Drive 音效
+        winAudio.currentTime = 0;
+        winAudio.play().catch(e => console.log("音效播放受限:", e));
+
+        // 2. 噴發彩帶特效
+        confetti({ 
+            particleCount: 150, 
+            spread: 70, 
+            origin: { y: 0.6 },
+            zIndex: 1000 
+        });
+
+        // 3. 更新介面
+        document.getElementById('result').innerText = winner;
+        document.getElementById('shakeStage').innerText = "恭喜獲獎！請再搖 3 下繼續";
+        updateUI();
+    }
+
+    function updateUI() {
+        document.getElementById('remCount').innerText = names.length;
+        document.getElementById('historyList').innerHTML = history.slice().reverse().map(h => `<span class="tag">${h}</span>`).join('');
+    }
+</script>
+</body>
+</html>

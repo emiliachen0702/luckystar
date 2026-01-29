@@ -65,17 +65,28 @@
         names = input.split('\n').map(n => n.trim()).filter(n => n !== "");
         if (names.length === 0) return alert("請輸入名單內容");
 
+        // --- 偵錯強化：檢查音效是否加載成功 ---
+        doraAudio.src = 'dora.mp3'; // 確保路徑正確
         doraAudio.load();
 
+        doraAudio.onerror = function() {
+            alert("錯誤：找不到音效檔 'dora.mp3'。請檢查檔案是否已上傳至 GitHub 且檔名完全正確。");
+        };
+
+        doraAudio.oncanplaythrough = function() {
+            console.log("音效已就緒");
+        };
+
+        // 請求權限
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
             try {
                 const p = await DeviceMotionEvent.requestPermission();
                 if (p === 'granted') {
                     window.addEventListener('devicemotion', handleMotion);
                 } else {
-                    alert("未取得感應器權限");
+                    alert("提示：未取得感應器權限，請務必點選允許。");
                 }
-            } catch (err) { console.error(err); }
+            } catch (err) { alert("權限請求出錯：" + err); }
         } else {
             window.addEventListener('devicemotion', handleMotion);
         }
@@ -84,7 +95,6 @@
         document.getElementById('drawZone').style.display = 'block';
         updateUI();
     }
-
     // 按下「下一位」按鈕的動作
     function prepareNext() {
         isWaitingForConfirmation = false; // 解除鎖定，允許搖晃
@@ -158,3 +168,4 @@
 </script>
 </body>
 </html>
+

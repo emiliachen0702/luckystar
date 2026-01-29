@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業抽籤系統 - 雲端音效版</title>
+    <title>專業抽籤系統 - 加強搖晃版</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; }
@@ -14,9 +14,11 @@
         .btn-primary { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; background: var(--primary); color: white; cursor: pointer; }
         #drawZone { display: none; text-align: center; margin-top: 20px; }
         #result { font-size: 3.5rem; font-weight: 800; margin: 30px 0; color: #1e293b; min-height: 5rem; display: flex; align-items: center; justify-content: center; }
-        .shake-hint { background: #eff6ff; color: var(--primary); padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; display: inline-block; margin-bottom: 10px; }
+        .shake-hint { background: #eff6ff; color: var(--primary); padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; display: inline-block; margin-bottom: 10px; font-weight: bold; }
         .history { border-top: 1px dashed #e2e8f0; padding-top: 20px; text-align: left; margin-top: 20px; }
         .tag { display: inline-block; background: #f1f5f9; padding: 5px 12px; border-radius: 6px; margin: 4px; font-size: 0.85rem; border: 1px solid #e2e8f0; }
+        .progress-bar { width: 100%; background-color: #e2e8f0; border-radius: 10px; height: 10px; margin-bottom: 10px; overflow: hidden; }
+        #progress { width: 0%; height: 100%; background-color: var(--primary); transition: width 0.2s; }
     </style>
 </head>
 <body>
@@ -29,7 +31,9 @@
     </div>
     
     <div id="drawZone">
-        <div id="shakeStage" class="shake-hint">等待搖晃偵測...</div>
+        <div class="shake-hint">用力搖晃手機來抽籤</div>
+        <div class="progress-bar"><div id="progress"></div></div>
+        <div id="shakeStage" style="font-size: 0.8rem; color: #64748b;">進度：0 / 8</div>
         <div id="result">準備抽獎</div>
         <div style="color:#64748b; font-size: 0.9rem;">剩餘人數：<span id="remCount">0</span></div>
         <div class="history"><strong>已抽出紀錄：</strong><div id="historyList"></div></div>
@@ -43,7 +47,10 @@
     let lastUpdate = 0;
     let lastX, lastY, lastZ;
 
-    // --- 音效設定：使用您提供的 Google Drive 直連網址 ---
+    // 參數設定：力道門檻(45) 與 總需搖晃次數(8)
+    const SHAKE_THRESHOLD = 45; 
+    const TOTAL_SHAKES_NEEDED = 8;
+
     const WIN_SOUND_URL = 'https://docs.google.com/uc?export=download&id=1dZEvpLULFeG_M762MMnlZKL8CownQHvs'; 
     const winAudio = new Audio(WIN_SOUND_URL);
 
@@ -52,17 +59,15 @@
         names = input.split('\n').map(n => n.trim()).filter(n => n !== "");
         if (names.length === 0) return alert("請輸入名單");
 
-        // 預載音效
         winAudio.load();
 
-        // 請求動作感應器權限 (iOS 必備)
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
             try {
                 const p = await DeviceMotionEvent.requestPermission();
                 if (p === 'granted') {
                     window.addEventListener('devicemotion', handleMotion);
                 } else {
-                    alert("未取得感應器權限，將無法使用搖晃抽籤");
+                    alert("未取得感應器權限");
                 }
             } catch (err) {
                 console.error(err);
@@ -78,19 +83,22 @@
 
     function handleMotion(e) {
         let curTime = Date.now();
-        if ((curTime - lastUpdate) > 100) {
+        if ((curTime - lastUpdate) > 80) { // 稍微加快採樣頻率
             let acc = e.accelerationIncludingGravity;
             if (!acc) return;
             
             let speed = Math.abs(acc.x + acc.y + acc.z - lastX - lastY - lastZ) / (curTime - lastUpdate) * 10000;
             
-            if (speed > 25) { // 搖晃強度門檻
+            if (speed > SHAKE_THRESHOLD) {
                 shakeCount++;
-                document.getElementById('shakeStage').innerText = `偵測搖晃：${shakeCount} / 3`;
+                const progressPercent = (shakeCount / TOTAL_SHAKES_NEEDED) * 100;
+                document.getElementById('progress').style.width = progressPercent + '%';
+                document.getElementById('shakeStage').innerText = `進度：${shakeCount} / ${TOTAL_SHAKES_NEEDED}`;
                 
-                if (shakeCount >= 3) {
+                if (shakeCount >= TOTAL_SHAKES_NEEDED) {
                     drawWinner();
                     shakeCount = 0;
+                    setTimeout(() => { document.getElementById('progress').style.width = '0%'; }, 500);
                 }
             }
             lastUpdate = curTime;
@@ -101,7 +109,6 @@
     function drawWinner() {
         if (names.length === 0) {
             document.getElementById('result').innerText = "抽完囉";
-            document.getElementById('shakeStage').innerText = "名單已空";
             return;
         }
 
@@ -109,21 +116,18 @@
         const winner = names.splice(idx, 1)[0];
         history.push(winner);
 
-        // 1. 播放您指定的 Google Drive 音效
         winAudio.currentTime = 0;
-        winAudio.play().catch(e => console.log("音效播放受限:", e));
+        winAudio.play().catch(e => console.log(e));
 
-        // 2. 噴發彩帶特效
         confetti({ 
-            particleCount: 150, 
-            spread: 70, 
+            particleCount: 180, 
+            spread: 80, 
             origin: { y: 0.6 },
             zIndex: 1000 
         });
 
-        // 3. 更新介面
         document.getElementById('result').innerText = winner;
-        document.getElementById('shakeStage').innerText = "恭喜獲獎！請再搖 3 下繼續";
+        document.getElementById('shakeStage').innerText = "進度：0 / 8";
         updateUI();
     }
 

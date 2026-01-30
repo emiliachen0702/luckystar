@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業抽籤系統 - 流程控管版</title>
+    <title>專業抽籤系統 - 極限高強度版</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     <style>
-        :root { --primary: #2563eb; --bg: #f8fafc; --danger: #dc2626; --success: #16a34a; }
+        :root { --primary: #2563eb; --bg: #f8fafc; --danger: #dc2626; --success: #16a34a; --secondary: #64748b; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .container { width: 100%; max-width: 500px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
         h2 { font-size: 1.2rem; color: #1e293b; margin-top: 0; border-left: 4px solid var(--primary); padding-left: 10px; }
         textarea { width: 100%; height: 120px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; font-size: 16px; margin-bottom: 15px; box-sizing: border-box; }
-        .btn { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-bottom: 10px; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-next { background: var(--success); color: white; display: none; margin-top: 15px; }
+        .btn-secondary { background: var(--secondary); color: white; font-size: 14px; padding: 10px; margin-top: 20px; opacity: 0.7; }
         #drawZone { display: none; text-align: center; margin-top: 20px; }
         #result { font-size: 3.5rem; font-weight: 800; margin: 25px 0; color: #1e293b; min-height: 5rem; display: flex; align-items: center; justify-content: center; background: #f1f5f9; border-radius: 12px; }
         .shake-hint { background: #fee2e2; color: var(--danger); padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; display: inline-block; margin-bottom: 15px; font-weight: bold; }
@@ -34,17 +35,18 @@
     
     <div id="drawZone">
         <div id="shakeStatusSection">
-            <div class="shake-hint">高強度模式：請奮力搖晃！</div>
+            <div class="shake-hint">極限模式：請奮力連續搖晃！</div>
             <div class="progress-bar"><div id="progress"></div></div>
-            <div id="shakeStage" style="font-size: 0.85rem; color: #64748b; font-weight: bold;">能量累積：0 / 15</div>
+            <div id="shakeStage" style="font-size: 0.85rem; color: #64748b; font-weight: bold;">能量累積：0 / 25</div>
         </div>
         
-        <div id="result">準備抽獎</div>
-        
+        <div id="result">等待發力</div>
         <button id="nextBtn" class="btn btn-next" onclick="prepareNext()">準備抽下一位</button>
 
         <div style="color:#64748b; font-size: 0.9rem; margin-top: 15px; margin-bottom: 10px;">剩餘人數：<span id="remCount">0</span></div>
         <div class="history"><strong>已抽出紀錄：</strong><div id="historyList"></div></div>
+
+        <button class="btn btn-secondary" onclick="backToSetup()">回到輸入名單</button>
     </div>
 </div>
 
@@ -54,8 +56,9 @@
     let shakeCount = 0;
     let lastUpdate = 0;
     let lastX, lastY, lastZ;
-    let isWaitingForConfirmation = false; // 控制是否鎖定搖晃偵測
+    let isWaitingForConfirmation = false;
 
+    // --- 依照要求更新的參數 ---
     const SHAKE_THRESHOLD = 900; 
     const TOTAL_SHAKES_NEEDED = 25; 
     const doraAudio = new Audio('dora.mp3'); 
@@ -65,28 +68,16 @@
         names = input.split('\n').map(n => n.trim()).filter(n => n !== "");
         if (names.length === 0) return alert("請輸入名單內容");
 
-        // --- 偵錯強化：檢查音效是否加載成功 ---
-        doraAudio.src = 'dora.mp3'; // 確保路徑正確
         doraAudio.load();
+        doraAudio.play().then(() => doraAudio.pause()).catch(e => {});
 
-        doraAudio.onerror = function() {
-            alert("錯誤：找不到音效檔 'dora.mp3'。請檢查檔案是否已上傳至 GitHub 且檔名完全正確。");
-        };
-
-        doraAudio.oncanplaythrough = function() {
-            console.log("音效已就緒");
-        };
-
-        // 請求權限
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
             try {
                 const p = await DeviceMotionEvent.requestPermission();
                 if (p === 'granted') {
                     window.addEventListener('devicemotion', handleMotion);
-                } else {
-                    alert("提示：未取得感應器權限，請務必點選允許。");
                 }
-            } catch (err) { alert("權限請求出錯：" + err); }
+            } catch (err) { alert("感應器請求失敗"); }
         } else {
             window.addEventListener('devicemotion', handleMotion);
         }
@@ -95,9 +86,19 @@
         document.getElementById('drawZone').style.display = 'block';
         updateUI();
     }
-    // 按下「下一位」按鈕的動作
+
+    function backToSetup() {
+        document.getElementById('nameInput').value = names.join('\n');
+        document.getElementById('setupZone').style.display = 'block';
+        document.getElementById('drawZone').style.display = 'none';
+        isWaitingForConfirmation = true; 
+    }
+
     function prepareNext() {
-        isWaitingForConfirmation = false; // 解除鎖定，允許搖晃
+        doraAudio.load(); 
+        doraAudio.play().then(() => doraAudio.pause()).catch(e => {});
+
+        isWaitingForConfirmation = false;
         shakeCount = 0;
         document.getElementById('progress').style.width = '0%';
         document.getElementById('shakeStage').innerText = `能量累積：0 / ${TOTAL_SHAKES_NEEDED}`;
@@ -107,26 +108,20 @@
     }
 
     function handleMotion(e) {
-        if (isWaitingForConfirmation) return; // 如果還沒按「下一位」，不處理搖晃偵測
-
+        if (isWaitingForConfirmation) return;
         let curTime = Date.now();
         if ((curTime - lastUpdate) > 60) { 
             let acc = e.accelerationIncludingGravity;
             if (!acc) return;
-            
             let speed = Math.abs(acc.x + acc.y + acc.z - lastX - lastY - lastZ) / (curTime - lastUpdate) * 10000;
             
             if (speed > SHAKE_THRESHOLD) {
                 shakeCount++;
                 if (navigator.vibrate) navigator.vibrate(15);
-
                 const progressPercent = (shakeCount / TOTAL_SHAKES_NEEDED) * 100;
                 document.getElementById('progress').style.width = progressPercent + '%';
                 document.getElementById('shakeStage').innerText = `能量累積：${shakeCount} / ${TOTAL_SHAKES_NEEDED}`;
-                
-                if (shakeCount >= TOTAL_SHAKES_NEEDED) {
-                    drawWinner();
-                }
+                if (shakeCount >= TOTAL_SHAKES_NEEDED) { drawWinner(); }
             }
             lastUpdate = curTime;
             lastX = acc.x; lastY = acc.y; lastZ = acc.z;
@@ -134,30 +129,21 @@
     }
 
     function drawWinner() {
-        if (names.length === 0) {
-            document.getElementById('result').innerText = "已抽完";
-            return;
-        }
-
+        if (names.length === 0) return;
         const idx = Math.floor(Math.random() * names.length);
         const winner = names.splice(idx, 1)[0];
         history.push(winner);
 
-        // 播放音效
-        doraAudio.currentTime = 0;
-        doraAudio.play();
+        doraAudio.pause();
+        doraAudio.currentTime = 0; 
+        doraAudio.play().catch(e => {});
 
-        // 視覺特效與震動
         if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
         confetti({ particleCount: 250, spread: 100, origin: { y: 0.6 } });
-
         document.getElementById('result').innerText = winner;
-        
-        // 關鍵：鎖定搖晃並顯示「下一位」按鈕
         isWaitingForConfirmation = true;
         document.getElementById('nextBtn').style.display = 'block';
-        document.getElementById('shakeStatusSection').style.opacity = '0.3'; // 調淡搖晃區，暗示暫時失效
-        
+        document.getElementById('shakeStatusSection').style.opacity = '0.3';
         updateUI();
     }
 

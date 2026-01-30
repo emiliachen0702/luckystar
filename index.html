@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業抽籤系統 - 最終完善版</title>
+    <title>專業抽籤系統 - 穩定修復版</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --danger: #dc2626; --success: #16a34a; --secondary: #64748b; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .container { width: 100%; max-width: 500px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
         h2 { font-size: 1.2rem; color: #1e293b; margin-top: 0; border-left: 4px solid var(--primary); padding-left: 10px; }
-        textarea { width: 100%; height: 120px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; font-size: 16px; margin-bottom: 15px; box-sizing: border-box; }
+        textarea { width: 100%; height: 200px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; font-size: 16px; margin-bottom: 15px; box-sizing: border-box; }
         .btn { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-bottom: 10px; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-next { background: var(--success); color: white; display: none; margin-top: 15px; }
         .btn-secondary { background: var(--secondary); color: white; font-size: 14px; padding: 10px; margin-top: 20px; opacity: 0.8; }
         #drawZone { display: none; text-align: center; margin-top: 20px; }
-        #result { font-size: 3.5rem; font-weight: 800; margin: 25px 0; color: #1e293b; min-height: 5rem; display: flex; align-items: center; justify-content: center; background: #f1f5f9; border-radius: 12px; }
+        #result { font-size: 2.5rem; font-weight: 800; margin: 25px 0; color: #1e293b; min-height: 5rem; display: flex; align-items: center; justify-content: center; background: #f1f5f9; border-radius: 12px; padding: 10px; line-height: 1.2; }
         .shake-hint { background: #fee2e2; color: var(--danger); padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; display: inline-block; margin-bottom: 15px; font-weight: bold; }
         .progress-bar { width: 100%; background-color: #e2e8f0; border-radius: 10px; height: 14px; margin-bottom: 10px; overflow: hidden; }
         #progress { width: 0%; height: 100%; background-color: var(--danger); transition: width 0.1s ease-out; }
@@ -28,8 +28,8 @@
 
 <div class="container">
     <div id="setupZone">
-        <h2>1. 導入名單</h2>
-        <textarea id="nameInput" placeholder="請貼上姓名清單（一行一個名字）"></textarea>
+        <h2>1. 導入名單 (支援越文名稱)</h2>
+        <textarea id="nameInput" placeholder="請貼上姓名清單..."></textarea>
         <button class="btn btn-primary" onclick="initSystem()">啟動抽籤模式</button>
     </div>
     
@@ -63,14 +63,20 @@
     let lastX, lastY, lastZ;
     let isWaitingForConfirmation = false;
 
-    // --- 核心參數調整 ---
+    // --- 您的參數設定 ---
     const SHAKE_THRESHOLD = 900; 
     const TOTAL_SHAKES_NEEDED = 25; 
     const doraAudio = new Audio('dora.mp3'); 
 
     async function initSystem() {
         const input = document.getElementById('nameInput').value;
-        names = input.split('\n').map(n => n.trim()).filter(n => n !== "");
+        
+        // --- 名單清洗優化：處理特殊空格與換行符 ---
+        names = input.replace(/\u00a0/g, " ") // 將特殊空格轉為標準空格
+                     .split(/\r?\n/)          // 支援各種換行格式
+                     .map(n => n.trim())      // 去除前後空格
+                     .filter(n => n !== "");  // 過濾空行
+        
         if (names.length === 0) return alert("請輸入名單內容");
 
         doraAudio.load();
@@ -93,6 +99,73 @@
         updateUI();
     }
 
-    // --- 返回設定功能 ---
     function backToSetup() {
+        document.getElementById('nameInput').value = names.join('\n');
+        document.getElementById('setupZone').style.display = 'block';
+        document.getElementById('drawZone').style.display = 'none';
+        isWaitingForConfirmation = true; 
+    }
+
+    function prepareNext() {
+        doraAudio.load(); 
+        doraAudio.play().then(() => doraAudio.pause()).catch(e => {});
+
+        isWaitingForConfirmation = false;
+        shakeCount = 0;
+        document.getElementById('progress').style.width = '0%';
+        document.getElementById('shakeStage').innerText = `目前能量：0 / ${TOTAL_SHAKES_NEEDED}`;
+        document.getElementById('result').innerText = "等待發力";
+        document.getElementById('nextBtn').style.display = 'none';
+        document.getElementById('shakeStatusSection').style.opacity = '1';
+    }
+
+    function handleMotion(e) {
+        if (isWaitingForConfirmation) return;
+        let curTime = Date.now();
+        if ((curTime - lastUpdate) > 60) { 
+            let acc = e.accelerationIncludingGravity;
+            if (!acc) return;
+            let speed = Math.abs(acc.x + acc.y + acc.z - lastX - lastY - lastZ) / (curTime - lastUpdate) * 10000;
+            
+            if (speed > SHAKE_THRESHOLD) {
+                shakeCount++;
+                if (navigator.vibrate) navigator.vibrate(15);
+                const progressPercent = (shakeCount / TOTAL_SHAKES_NEEDED) * 100;
+                document.getElementById('progress').style.width = progressPercent + '%';
+                document.getElementById('shakeStage').innerText = `目前能量：${shakeCount} / ${TOTAL_SHAKES_NEEDED}`;
+                if (shakeCount >= TOTAL_SHAKES_NEEDED) { drawWinner(); }
+            }
+            lastUpdate = curTime;
+            lastX = acc.x; lastY = acc.y; lastZ = acc.z;
+        }
+    }
+
+    function drawWinner() {
+        if (names.length === 0) return;
+        const idx = Math.floor(Math.random() * names.length);
+        const winner = names.splice(idx, 1)[0];
+        history.push(winner);
+
+        doraAudio.pause();
+        doraAudio.currentTime = 0; 
+        doraAudio.play().catch(e => {});
+
+        if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
+        confetti({ particleCount: 250, spread: 100, origin: { y: 0.6 } });
+        document.getElementById('result').innerText = winner;
+        
+        isWaitingForConfirmation = true;
+        document.getElementById('nextBtn').style.display = 'block';
+        document.getElementById('shakeStatusSection').style.opacity = '0.3';
+        updateUI();
+    }
+
+    function updateUI() {
+        document.getElementById('remCount').innerText = names.length;
+        document.getElementById('historyList').innerHTML = history.slice().reverse().map(h => `<span class="tag">${h}</span>`).join('');
+    }
+</script>
+</body>
+</html>
+
 

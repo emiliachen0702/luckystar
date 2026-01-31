@@ -66,15 +66,16 @@
 
     async function initSystem() {
         const input = document.getElementById('nameInput').value;
+        // 名單清洗：處理特殊空格與換行
         names = input.replace(/\u00a0/g, " ").split(/\r?\n/).map(n => n.trim()).filter(n => n !== "");
         if (names.length === 0) return alert("請輸入名單內容");
 
-        // 【修正點 1】靜音初始化：僅加載並設定極小音量播放後暫停，防止聽到聲音
+        // 【修正點】靜音初始化：載入並將音量設為 0 進行短暫播放以解鎖通道
         doraAudio.load();
-        doraAudio.volume = 0; // 先設為靜音
+        doraAudio.volume = 0; // 靜音
         doraAudio.play().then(() => {
             doraAudio.pause();
-            doraAudio.volume = 1.0; // 恢復正常音量供後續使用
+            doraAudio.volume = 1.0; // 恢復正常音量
         }).catch(e => console.log("等待權限解鎖"));
 
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
@@ -94,14 +95,14 @@
     }
 
     function backToSetup() {
-        document.getElementById('nameInput').value = names.join('\n');
+        document.getElementById('nameInput').value = names.join('\n'); // 同步未抽出名單
         document.getElementById('setupZone').style.display = 'block';
         document.getElementById('drawZone').style.display = 'none';
         isWaitingForConfirmation = true; 
     }
 
     function prepareNext() {
-        // 【修正點 2】同樣採取靜音刷新策略
+        // 重置時同樣採取靜音刷新策略
         doraAudio.load();
         doraAudio.volume = 0;
         doraAudio.play().then(() => {
@@ -145,10 +146,10 @@
         const winner = names.splice(idx, 1)[0];
         history.push(winner);
 
-        // 【修正點 3】確定抽出人員才發聲
+        // 【音效揭曉】確定抽出人員才發聲，並重置播放點
         doraAudio.pause();
         doraAudio.currentTime = 0; 
-        doraAudio.volume = 1.0; // 確保音量正常
+        doraAudio.volume = 1.0; 
         doraAudio.play().catch(e => {});
 
         if (navigator.vibrate) navigator.vibrate([100, 50, 200]);

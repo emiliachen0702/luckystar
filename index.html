@@ -28,14 +28,14 @@
 
 <div class="container">
     <div id="setupZone">
-        <h2>1. 導入名單 (支援越文與特殊格式)</h2>
+        <h2>1. 導入名單</h2>
         <textarea id="nameInput" placeholder="請貼上姓名清單..."></textarea>
         <button class="btn btn-primary" onclick="initSystem()">啟動抽籤模式</button>
     </div>
     
     <div id="drawZone">
         <div id="shakeStatusSection">
-            <div class="shake-hint">極限模式：用力連續搖晃！</div>
+            <div class="shake-hint">用力連續搖晃！</div>
             <div class="progress-bar"><div id="progress"></div></div>
             <div id="shakeStage" style="font-size: 0.85rem; color: #64748b; font-weight: bold;">目前能量：0 / 25</div>
         </div>
@@ -52,57 +52,57 @@
 </div>
 
 <script>
-  let names = [];
+    let names = [];
     let history = [];
     let shakeCount = 0;
     let lastUpdate = 0;
     let lastX, lastY, lastZ;
     let isWaitingForConfirmation = false;
+    let doraAudio = null; // 延遲建立音訊物件
 
-    // --- 參數區 ---
     const SHAKE_THRESHOLD = 900; 
     const TOTAL_SHAKES_NEEDED = 25; 
-    const doraAudio = new Audio('dora.mp3'); 
 
-    async function initSystem() {
+    function initSystem() {
         const input = document.getElementById('nameInput').value;
         names = input.replace(/\u00a0/g, " ").split(/\r?\n/).map(n => n.trim()).filter(n => n !== "");
         if (names.length === 0) return alert("請輸入名單內容");
 
-        // 【核心修正：物理解鎖】
-        // 不播放 dora.mp3，改用 Web Audio 產生一個毫秒級的靜音頻率來解鎖手機音訊通道
-        const context = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        gain.gain.value = 0; // 絕對靜音
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start(0);
-        oscillator.stop(0.1); 
+        // 僅在此處建立音訊物件，不主動呼叫 play() 或 load()
+        if (!doraAudio) {
+            doraAudio = new Audio('dora.mp3');
+        }
 
-        // 僅單純 load 檔案，不在此處呼叫 play()
-        doraAudio.load();
-
+        // 請求權限
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
-            try {
-                const p = await DeviceMotionEvent.requestPermission();
-                if (p === 'granted') {
-                    window.addEventListener('devicemotion', handleMotion);
-                }
-            } catch (err) { alert("感應器請求失敗"); }
+            DeviceMotionEvent.requestPermission()
+                .then(p => {
+                    if (p === 'granted') {
+                        window.addEventListener('devicemotion', handleMotion);
+                        switchToDrawMode();
+                    }
+                })
+                .catch(err => alert("感應器請求失敗"));
         } else {
             window.addEventListener('devicemotion', handleMotion);
+            switchToDrawMode();
         }
-        
+    }
+
+    function switchToDrawMode() {
         document.getElementById('setupZone').style.display = 'none';
         document.getElementById('drawZone').style.display = 'block';
-        isWaitingForConfirmation = false; 
         updateUI();
     }
 
+    function backToSetup() {
+        document.getElementById('nameInput').value = names.join('\n');
+        document.getElementById('setupZone').style.display = 'block';
+        document.getElementById('drawZone').style.display = 'none';
+        isWaitingForConfirmation = true; 
+    }
+
     function prepareNext() {
-        // 重置時僅 load，確保檔案就緒但不播放
-        doraAudio.load(); 
         isWaitingForConfirmation = false;
         shakeCount = 0;
         document.getElementById('progress').style.width = '0%';
@@ -138,10 +138,11 @@
         const winner = names.splice(idx, 1)[0];
         history.push(winner);
 
-        // --- 唯一發聲點 ---
-        // 只有在這裡才會執行真正的播放
-        doraAudio.currentTime = 0; 
-        doraAudio.play().catch(e => console.log("播放失敗"));
+        // --- 唯一播放點：揭曉瞬間 ---
+        if (doraAudio) {
+            doraAudio.currentTime = 0; 
+            doraAudio.play().catch(e => console.log("音訊播放受阻"));
+        }
 
         if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
         confetti({ particleCount: 250, spread: 100, origin: { y: 0.6 } });
@@ -151,7 +152,11 @@
         document.getElementById('shakeStatusSection').style.opacity = '0.3';
         updateUI();
     }
+
+    function updateUI() {
+        document.getElementById('remCount').innerText = names.length;
+        document.getElementById('historyList').innerHTML = history.slice().reverse().map(h => `<span class="tag">${h}</span>`).join('');
+    }
 </script>
 </body>
 </html>
-

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業抽籤系統 - 穩定修復版</title>
+    <title>專業抽籤系統 - 音效同步版</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --danger: #dc2626; --success: #16a34a; --secondary: #64748b; }
@@ -28,14 +28,14 @@
 
 <div class="container">
     <div id="setupZone">
-        <h2>1. 導入名單 (支援越文名稱)</h2>
+        <h2>1. 導入名單 (支援特殊空格與越文)</h2>
         <textarea id="nameInput" placeholder="請貼上姓名清單..."></textarea>
         <button class="btn btn-primary" onclick="initSystem()">啟動抽籤模式</button>
     </div>
     
     <div id="drawZone">
         <div id="shakeStatusSection">
-            <div class="shake-hint">極限發力模式：用力連續搖晃！</div>
+            <div class="shake-hint">極限模式：用力連續搖晃！</div>
             <div class="progress-bar"><div id="progress"></div></div>
             <div id="shakeStage" style="font-size: 0.85rem; color: #64748b; font-weight: bold;">目前能量：0 / 25</div>
         </div>
@@ -45,11 +45,7 @@
         <button id="nextBtn" class="btn btn-next" onclick="prepareNext()">準備抽下一位</button>
 
         <div style="color:#64748b; font-size: 0.9rem; margin-top: 15px; margin-bottom: 10px;">剩餘人數：<span id="remCount">0</span></div>
-        
-        <div class="history">
-            <strong>已抽出紀錄：</strong>
-            <div id="historyList"></div>
-        </div>
+        <div class="history"><strong>已抽出紀錄：</strong><div id="historyList"></div></div>
 
         <button class="btn btn-secondary" onclick="backToSetup()">回到輸入名單</button>
     </div>
@@ -63,22 +59,17 @@
     let lastX, lastY, lastZ;
     let isWaitingForConfirmation = false;
 
-    // --- 您的參數設定 ---
     const SHAKE_THRESHOLD = 900; 
     const TOTAL_SHAKES_NEEDED = 25; 
     const doraAudio = new Audio('dora.mp3'); 
 
     async function initSystem() {
         const input = document.getElementById('nameInput').value;
-        
-        // --- 名單清洗優化：處理特殊空格與換行符 ---
-        names = input.replace(/\u00a0/g, " ") // 將特殊空格轉為標準空格
-                     .split(/\r?\n/)          // 支援各種換行格式
-                     .map(n => n.trim())      // 去除前後空格
-                     .filter(n => n !== "");  // 過濾空行
+        names = input.replace(/\u00a0/g, " ").split(/\r?\n/).map(n => n.trim()).filter(n => n !== "");
         
         if (names.length === 0) return alert("請輸入名單內容");
 
+        // 預載音效
         doraAudio.load();
         doraAudio.play().then(() => doraAudio.pause()).catch(e => {});
 
@@ -95,7 +86,6 @@
         
         document.getElementById('setupZone').style.display = 'none';
         document.getElementById('drawZone').style.display = 'block';
-        isWaitingForConfirmation = false; 
         updateUI();
     }
 
@@ -146,10 +136,12 @@
         const winner = names.splice(idx, 1)[0];
         history.push(winner);
 
+        // --- 音效觸發核心：與顯示人名同步 ---
         doraAudio.pause();
         doraAudio.currentTime = 0; 
-        doraAudio.play().catch(e => {});
+        doraAudio.play().catch(e => console.log("音效播報被攔截"));
 
+        // 特效與結果顯示
         if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
         confetti({ particleCount: 250, spread: 100, origin: { y: 0.6 } });
         document.getElementById('result').innerText = winner;
@@ -167,5 +159,3 @@
 </script>
 </body>
 </html>
-
-

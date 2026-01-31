@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>專業抽籤系統 - iOS 修正版</title>
+    <title>專業抽籤系統 - 邏輯修正版</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --danger: #dc2626; --success: #16a34a; --secondary: #64748b; }
@@ -28,14 +28,14 @@
 
 <div class="container">
     <div id="setupZone">
-        <h2>1. 導入名單 (支援越文與特殊格式)</h2>
+        <h2>1. 導入名單 (支援越文)</h2>
         <textarea id="nameInput" placeholder="請貼上姓名清單..."></textarea>
         <button class="btn btn-primary" onclick="initSystem()">啟動抽籤模式</button>
     </div>
     
     <div id="drawZone">
         <div id="shakeStatusSection">
-            <div class="shake-hint">極限發力模式：用力連續搖晃！</div>
+            <div class="shake-hint">用力連續搖晃！</div>
             <div class="progress-bar"><div id="progress"></div></div>
             <div id="shakeStage" style="font-size: 0.85rem; color: #64748b; font-weight: bold;">目前能量：0 / 25</div>
         </div>
@@ -43,10 +43,8 @@
         <div id="result">等待發力</div>
         
         <button id="nextBtn" class="btn btn-next" onclick="prepareNext()">準備抽下一位</button>
-
         <div style="color:#64748b; font-size: 0.9rem; margin-top: 15px; margin-bottom: 10px;">剩餘人數：<span id="remCount">0</span></div>
         <div class="history"><strong>已抽出紀錄：</strong><div id="historyList"></div></div>
-
         <button class="btn btn-secondary" onclick="backToSetup()">回到輸入名單</button>
     </div>
 </div>
@@ -58,8 +56,8 @@
     let lastUpdate = 0;
     let lastX, lastY, lastZ;
     let isWaitingForConfirmation = false;
+    let isMonitoring = false; // 新增狀態追蹤
 
-    // --- 參數區 ---
     const SHAKE_THRESHOLD = 900; 
     const TOTAL_SHAKES_NEEDED = 25; 
 
@@ -68,24 +66,29 @@
         names = input.replace(/\u00a0/g, " ").split(/\r?\n/).map(n => n.trim()).filter(n => n !== "");
         if (names.length === 0) return alert("請輸入名單內容");
 
-        // iOS 必備：解鎖音訊上下文，但不載入 dora.mp3
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        const ctx = new AudioContext();
-        ctx.resume();
-
-        if (typeof DeviceMotionEvent.requestPermission === 'function') {
-            try {
-                const p = await DeviceMotionEvent.requestPermission();
-                if (p === 'granted') {
-                    window.addEventListener('devicemotion', handleMotion);
-                }
-            } catch (err) { alert("感應器請求失敗"); }
-        } else {
-            window.addEventListener('devicemotion', handleMotion);
+        // 啟動監聽（若尚未啟動）
+        if (!isMonitoring) {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const p = await DeviceMotionEvent.requestPermission();
+                    if (p === 'granted') {
+                        window.addEventListener('devicemotion', handleMotion);
+                        isMonitoring = true;
+                    }
+                } catch (err) { alert("感應器請求失敗"); }
+            } else {
+                window.addEventListener('devicemotion', handleMotion);
+                isMonitoring = true;
+            }
         }
         
+        // 切換顯示
         document.getElementById('setupZone').style.display = 'none';
         document.getElementById('drawZone').style.display = 'block';
+        
+        // 【修正點】每次啟動模式，都確保解開等待鎖定並重置進度
+        isWaitingForConfirmation = false; 
+        prepareNext(); 
         updateUI();
     }
 
@@ -93,6 +96,7 @@
         document.getElementById('nameInput').value = names.join('\n');
         document.getElementById('setupZone').style.display = 'block';
         document.getElementById('drawZone').style.display = 'none';
+        // 返回時進入等待狀態，防止在背景誤觸
         isWaitingForConfirmation = true; 
     }
 
@@ -107,12 +111,15 @@
     }
 
     function handleMotion(e) {
+        // 如果正在等待確認（已抽出或在設定頁），則不計數
         if (isWaitingForConfirmation) return;
+
         let curTime = Date.now();
         if ((curTime - lastUpdate) > 60) { 
             let acc = e.accelerationIncludingGravity;
             if (!acc) return;
             let speed = Math.abs(acc.x + acc.y + acc.z - lastX - lastY - lastZ) / (curTime - lastUpdate) * 10000;
+            
             if (speed > SHAKE_THRESHOLD) {
                 shakeCount++;
                 if (navigator.vibrate) navigator.vibrate(15);
@@ -132,9 +139,9 @@
         const winner = names.splice(idx, 1)[0];
         history.push(winner);
 
-        // --- 核心修正：現場建立，現場播放，結束即棄 ---
+        // iOS 物理級播放：揭曉瞬間載入並播放
         const instantAudio = new Audio('dora.mp3');
-        instantAudio.play().catch(e => console.log("音效遭攔截"));
+        instantAudio.play().catch(e => console.log("音效受阻"));
 
         if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
         confetti({ particleCount: 250, spread: 100, origin: { y: 0.6 } });
